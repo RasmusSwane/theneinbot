@@ -408,7 +408,7 @@ async function main() {
       {
         type: 'input',
         name: 'url',
-        message: 'Paste your Tailscale URL (https://...ts.net):',
+        message: 'Paste your Tailscale URL (https://...ts.net) or other HTTPS URL:',
         validate: (input) => {
           if (!input) return 'URL is required';
           if (!input.startsWith('https://')) return 'URL must start with https://';
