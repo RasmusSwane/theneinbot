@@ -40,47 +40,56 @@ if [ -n "$LLM_SECRETS" ]; then
     eval $(echo "$LLM_SECRETS_JSON" | jq -r 'to_entries | .[] | "export \(.key)=\"\(.value)\""')
 fi
 
-# Git setup - use GH_TOKEN directly for authentication
-# Export GITHUB_TOKEN as well (some gh CLI versions check this instead of GH_TOKEN)
+# ============================================================
+# Git authentication setup
+# ============================================================
+# gh CLI auto-registers as a git credential helper and intercepts all git auth,
+# causing "502 Failed to authenticate request with Clerk" errors.
+# Fix: hide gh from git entirely by renaming the binary during git operations,
+# and use token-in-URL authentication exclusively.
+# ============================================================
+
 export GITHUB_TOKEN="$GH_TOKEN"
 
-# Get user info using curl + GH_TOKEN directly (avoids gh CLI credential helper side effects)
-# NOTE: Do NOT use 'gh api' here — it auto-registers gh as a git credential helper,
-# which intercepts git clone and causes "401 No cookie auth credentials found"
+# Get user info using curl (NOT gh api — that triggers credential helper registration)
 GH_USER_JSON=$(curl -sf -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user 2>/dev/null | jq '{name: .name, login: .login, email: .email, id: .id}' 2>/dev/null || echo '{}')
 GH_USER_NAME=$(echo "$GH_USER_JSON" | jq -r '.name // .login // empty')
 GH_USER_EMAIL=$(echo "$GH_USER_JSON" | jq -r '.email // empty')
 
-# Fallback if API call failed or returned empty (e.g. token scope issue)
-if [ -z "$GH_USER_NAME" ]; then
-    GH_USER_NAME="thepopebot"
-fi
-if [ -z "$GH_USER_EMAIL" ]; then
-    GH_USER_EMAIL="thepopebot@users.noreply.github.com"
-fi
+if [ -z "$GH_USER_NAME" ]; then GH_USER_NAME="thepopebot"; fi
+if [ -z "$GH_USER_EMAIL" ]; then GH_USER_EMAIL="thepopebot@users.noreply.github.com"; fi
 
 git config --global user.name "$GH_USER_NAME"
 git config --global user.email "$GH_USER_EMAIL"
 
-# Clone branch - inject token directly into URL, disable all credential helpers
+# Hide gh from git: temporarily rename the binary so git can't invoke it as a credential helper
+GH_PATH=$(which gh 2>/dev/null || true)
+if [ -n "$GH_PATH" ]; then
+    mv "$GH_PATH" "${GH_PATH}.bak"
+fi
+
+# Nuke every possible credential helper config
+git config --global --unset-all credential.helper 2>/dev/null || true
+git config --system --unset-all credential.helper 2>/dev/null || true
+echo "" > /etc/gitconfig 2>/dev/null || true
+export GIT_TERMINAL_PROMPT=0
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_ASKPASS=""
+
+# Build authenticated URL
+AUTH_URL=$(echo "$REPO_URL" | sed "s|https://github.com/|https://x-access-token:${GH_TOKEN}@github.com/|")
+
+# Clone
 if [ -n "$REPO_URL" ]; then
     echo "Cloning: $REPO_URL branch: $BRANCH"
-
-    # Nuke all credential helpers (global, system, and any gh-registered ones)
-    git config --global --unset-all credential.helper 2>/dev/null || true
-    git config --system --unset-all credential.helper 2>/dev/null || true
-    git config --global credential.helper ""
-
-    # Prevent any credential prompt or helper from intercepting auth
-    export GIT_TERMINAL_PROMPT=0
-    export GIT_CONFIG_NOSYSTEM=1
-    unset GIT_ASKPASS
-
-    # Rewrite URL to embed token directly — bypasses all credential mechanisms
-    AUTH_REPO_URL=$(echo "$REPO_URL" | sed "s|https://github.com/|https://x-access-token:${GH_TOKEN}@github.com/|")
-    git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_REPO_URL" /job
+    git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_URL" /job
 else
     echo "No REPO_URL provided"
+fi
+
+# Restore gh binary (needed later for gh pr create)
+if [ -n "$GH_PATH" ] && [ -f "${GH_PATH}.bak" ]; then
+    mv "${GH_PATH}.bak" "$GH_PATH"
 fi
 
 cd /job
@@ -132,7 +141,15 @@ pi $MODEL_FLAGS -p "$PROMPT" --session-dir "${LOG_DIR}"
 git add -A
 git add -f "${LOG_DIR}"
 git commit -m "thepopebot: job ${JOB_ID}" || true
+
+# Ensure remote URL has token embedded, then hide gh again for push
+if [ -n "$GH_PATH" ]; then mv "$GH_PATH" "${GH_PATH}.bak"; fi
+AUTH_PUSH_URL=$(git remote get-url origin 2>/dev/null)
+if ! echo "$AUTH_PUSH_URL" | grep -q "x-access-token"; then
+    git remote set-url origin "$AUTH_URL"
+fi
 git push origin
+if [ -n "$GH_PATH" ] && [ -f "${GH_PATH}.bak" ]; then mv "${GH_PATH}.bak" "$GH_PATH"; fi
 
 # 3. Merge (pi has memory of job via session)
 #if [ -n "$REPO_URL" ] && [ -f "/job/MERGE_JOB.md" ]; then
