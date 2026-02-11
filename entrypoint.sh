@@ -58,7 +58,7 @@ if [ -n "$REPO_URL" ]; then
     # Defensive measures: prevent any credential helper interference
     # gh CLI auto-registers itself after 'gh api user', so we must re-disable it here
     export GIT_TERMINAL_PROMPT=0
-    export GIT_ASKPASS=""
+    export GIT_ASKPASS=/bin/true
     export GIT_CONFIG_NOSYSTEM=1
     git config --global credential.helper ""
     
