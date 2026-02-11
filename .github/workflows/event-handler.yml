@@ -42,7 +42,7 @@ jobs:
           # Wait for tunnel URL to appear (60 second timeout: 30 attempts × 2 seconds)
           echo "Waiting for Cloudflare Tunnel URL..."
           for i in $(seq 1 30); do
-            FUNNEL_URL=$(grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
+            FUNNEL_URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
             if [ -n "$FUNNEL_URL" ]; then
               break
             fi
