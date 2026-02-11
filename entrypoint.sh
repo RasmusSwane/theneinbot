@@ -54,8 +54,16 @@ if [ -n "$REPO_URL" ]; then
     # Remove any gh credential helper that intercepts git auth
     git config --global --unset-all credential.helper || true
     git config --system --unset-all credential.helper 2>/dev/null || true
+    
+    # Defensive measures: prevent any credential helper interference
+    # gh CLI auto-registers itself after 'gh api user', so we must re-disable it here
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_ASKPASS=/bin/true
+    export GIT_CONFIG_NOSYSTEM=1
+    git config --global credential.helper ""
+    
     AUTH_REPO_URL=$(echo "$REPO_URL" | sed "s|https://github.com/|https://x-access-token:${GH_TOKEN}@github.com/|")
-    GIT_TERMINAL_PROMPT=0 git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_REPO_URL" /job
+    git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_REPO_URL" /job
 else
     echo "No REPO_URL provided"
 fi
