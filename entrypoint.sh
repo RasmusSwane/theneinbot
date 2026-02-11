@@ -75,7 +75,11 @@ $(cat /job/logs/${JOB_ID}/job.md)"
 
 MODEL_FLAGS=""
 if [ -n "$MODEL" ]; then
-    MODEL_FLAGS="--provider anthropic --model $MODEL"
+    if [ -n "$OPENROUTER_API_KEY" ]; then
+        MODEL_FLAGS="--provider openrouter --model $MODEL"
+    else
+        MODEL_FLAGS="--provider anthropic --model $MODEL"
+    fi
 fi
 
 pi $MODEL_FLAGS -p "$PROMPT" --session-dir "${LOG_DIR}"

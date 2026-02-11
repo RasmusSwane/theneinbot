@@ -11,24 +11,185 @@ const WEB_SEARCH_TOOL = {
 };
 
 /**
- * Get Anthropic API key from environment
- * @returns {string} API key
+ * Check if OpenRouter backend is configured
+ * @returns {boolean}
  */
-function getApiKey() {
-  if (process.env.ANTHROPIC_API_KEY) {
-    return process.env.ANTHROPIC_API_KEY;
-  }
-  throw new Error('ANTHROPIC_API_KEY environment variable is required');
+function isOpenRouter() {
+  return !!process.env.OPENROUTER_API_KEY;
 }
 
 /**
- * Call Claude API
- * @param {Array} messages - Conversation messages
- * @param {Array} tools - Tool definitions
- * @returns {Promise<Object>} API response
+ * Get API key from environment (Anthropic or OpenRouter)
+ * @returns {string} API key
  */
-async function callClaude(messages, tools) {
-  const apiKey = getApiKey();
+function getApiKey() {
+  if (process.env.OPENROUTER_API_KEY) {
+    return process.env.OPENROUTER_API_KEY;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return process.env.ANTHROPIC_API_KEY;
+  }
+  throw new Error('ANTHROPIC_API_KEY or OPENROUTER_API_KEY environment variable is required');
+}
+
+/**
+ * Convert Anthropic tool definitions to OpenAI function format for OpenRouter
+ */
+function convertToolsToOpenAI(tools) {
+  return tools
+    .filter((t) => t.name && t.input_schema)
+    .map((t) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description || '',
+        parameters: t.input_schema,
+      },
+    }));
+}
+
+/**
+ * Convert Anthropic messages format to OpenAI messages format for OpenRouter
+ */
+function convertMessagesToOpenAI(systemPrompt, messages) {
+  const openaiMessages = [{ role: 'system', content: systemPrompt }];
+
+  for (const msg of messages) {
+    if (msg.role === 'user') {
+      if (typeof msg.content === 'string') {
+        openaiMessages.push({ role: 'user', content: msg.content });
+      } else if (Array.isArray(msg.content)) {
+        // Tool results array → convert to tool messages
+        for (const block of msg.content) {
+          if (block.type === 'tool_result') {
+            openaiMessages.push({
+              role: 'tool',
+              tool_call_id: block.tool_use_id,
+              content: typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
+            });
+          }
+        }
+      }
+    } else if (msg.role === 'assistant') {
+      if (typeof msg.content === 'string') {
+        openaiMessages.push({ role: 'assistant', content: msg.content });
+      } else if (Array.isArray(msg.content)) {
+        // Anthropic content blocks → extract text and tool_use
+        let text = '';
+        const toolCalls = [];
+        for (const block of msg.content) {
+          if (block.type === 'text') {
+            text += block.text;
+          } else if (block.type === 'tool_use') {
+            toolCalls.push({
+              id: block.id,
+              type: 'function',
+              function: {
+                name: block.name,
+                arguments: JSON.stringify(block.input),
+              },
+            });
+          }
+        }
+        const assistantMsg = { role: 'assistant' };
+        if (text) assistantMsg.content = text;
+        if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
+        if (!text && toolCalls.length === 0) assistantMsg.content = '';
+        openaiMessages.push(assistantMsg);
+      }
+    }
+  }
+
+  return openaiMessages;
+}
+
+/**
+ * Convert OpenRouter (OpenAI format) response back to Anthropic format
+ */
+function convertResponseToAnthropic(openaiResponse) {
+  const choice = openaiResponse.choices?.[0];
+  if (!choice) {
+    return { content: [{ type: 'text', text: 'No response from model.' }], stop_reason: 'end_turn' };
+  }
+
+  const msg = choice.message;
+  const content = [];
+
+  if (msg.content) {
+    content.push({ type: 'text', text: msg.content });
+  }
+
+  if (msg.tool_calls && msg.tool_calls.length > 0) {
+    for (const tc of msg.tool_calls) {
+      let args = {};
+      try {
+        args = JSON.parse(tc.function.arguments);
+      } catch (e) {
+        args = { raw: tc.function.arguments };
+      }
+      content.push({
+        type: 'tool_use',
+        id: tc.id,
+        name: tc.function.name,
+        input: args,
+      });
+    }
+  }
+
+  // Map OpenAI finish_reason to Anthropic stop_reason
+  let stopReason = 'end_turn';
+  if (choice.finish_reason === 'tool_calls') stopReason = 'tool_use';
+  if (msg.tool_calls && msg.tool_calls.length > 0) stopReason = 'tool_use';
+
+  return { content, stop_reason: stopReason };
+}
+
+/**
+ * Call LLM via OpenRouter (OpenAI-compatible API)
+ */
+async function callOpenRouter(messages, tools) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const model = process.env.EVENT_HANDLER_MODEL || DEFAULT_MODEL;
+  const systemPrompt = render_md(path.join(__dirname, '..', '..', 'operating_system', 'CHATBOT.md'));
+
+  // Convert to OpenAI format (exclude Anthropic-specific web_search tool)
+  const openaiMessages = convertMessagesToOpenAI(systemPrompt, messages);
+  const openaiTools = convertToolsToOpenAI(tools);
+
+  const body = {
+    model,
+    max_tokens: 4096,
+    messages: openaiMessages,
+  };
+
+  if (openaiTools.length > 0) {
+    body.tools = openaiTools;
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/01rmachani/thepopebot',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} ${error}`);
+  }
+
+  const openaiResponse = await response.json();
+  return convertResponseToAnthropic(openaiResponse);
+}
+
+/**
+ * Call Claude API directly via Anthropic
+ */
+async function callAnthropicDirect(messages, tools) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   const model = process.env.EVENT_HANDLER_MODEL || DEFAULT_MODEL;
   const systemPrompt = render_md(path.join(__dirname, '..', '..', 'operating_system', 'CHATBOT.md'));
 
@@ -58,6 +219,19 @@ async function callClaude(messages, tools) {
   }
 
   return response.json();
+}
+
+/**
+ * Call Claude API (routes to OpenRouter or Anthropic based on config)
+ * @param {Array} messages - Conversation messages
+ * @param {Array} tools - Tool definitions
+ * @returns {Promise<Object>} API response in Anthropic format
+ */
+async function callClaude(messages, tools) {
+  if (isOpenRouter()) {
+    return callOpenRouter(messages, tools);
+  }
+  return callAnthropicDirect(messages, tools);
 }
 
 /**
