@@ -77,9 +77,9 @@ You just bring your own LLM API key ([Anthropic](https://console.anthropic.com/)
 | **npm** | Included with Node.js |
 | **Git** | [git-scm.com](https://git-scm.com) |
 | **GitHub CLI** | [cli.github.com](https://cli.github.com) |
-| **ngrok*** | [ngrok.com](https://ngrok.com/download) |
+| **Tailscale*** | [tailscale.com](https://tailscale.com/download) |
 
-*\*ngrok is only required for local development. Production deployments don't need it.*
+*\*Tailscale is only required for local development. Production uses GitHub Actions + Tailscale Funnel.*
 
 ### Three steps
 
@@ -103,12 +103,12 @@ npm run setup
 ```
 
 The wizard handles everything:
-- Checks prerequisites (Node.js, Git, GitHub CLI, ngrok)
+- Checks prerequisites (Node.js, Git, GitHub CLI, Tailscale)
 - Creates a GitHub Personal Access Token
 - Collects API keys (At least one LLM backend required: Anthropic, OpenRouter, or NVIDIA NIM; OpenAI, Groq, and [Brave Search](https://api-dashboard.search.brave.com/app/keys) optional)
 - Sets GitHub repository secrets and variables
 - Sets up Telegram bot
-- Starts the server + ngrok, generates `event_handler/.env`
+- Starts the server + Tailscale Serve, generates `event_handler/.env`
 - Registers webhooks and verifies everything works
 
 **After setup, message your Telegram bot to create jobs!**
@@ -120,7 +120,7 @@ The wizard handles everything:
 | Document | Description |
 |----------|-------------|
 | [Architecture](docs/ARCHITECTURE.md) | Two-layer design, file structure, API endpoints, GitHub Actions, Docker agent |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables, GitHub secrets, repo variables, ngrok, Telegram setup |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables, GitHub secrets, repo variables, Tailscale, Telegram setup |
 | [Customization](docs/CUSTOMIZATION.md) | Personality, skills, operating system files, using your bot, security details |
 | [Auto-Merge](docs/AUTO_MERGE.md) | Auto-merge controls, ALLOWED_PATHS configuration |
 | [How to Use Pi](docs/HOW_TO_USE_PI.md) | Guide to the Pi coding agent |

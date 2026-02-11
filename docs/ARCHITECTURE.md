@@ -47,6 +47,7 @@ thepopebot uses a two-layer architecture:
 ├── .github/workflows/
 │   ├── auto-merge.yml       # Auto-merges job PRs (checks AUTO_MERGE + ALLOWED_PATHS)
 │   ├── docker-build.yml     # Builds and pushes Docker image to GHCR
+│   ├── event-handler.yml    # Runs event handler continuously via Tailscale Funnel
 │   ├── run-job.yml          # Runs Docker agent on job/* branch creation
 │   └── update-event-handler.yml  # Notifies event handler on PR opened
 ├── .pi/
@@ -122,7 +123,7 @@ curl -X POST http://localhost:3000/telegram/register \
   -H "x-api-key: YOUR_API_KEY" \
   -d '{
     "bot_token": "YOUR_BOT_TOKEN",
-    "webhook_url": "https://your-ngrok-url.ngrok-free.dev/telegram/webhook"
+    "webhook_url": "https://your-machine.tailnet-name.ts.net/telegram/webhook"
   }'
 ```
 
@@ -141,6 +142,7 @@ curl -X POST http://localhost:3000/telegram/register \
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `docker-build.yml` | Push to `main` | Builds Docker image, pushes to GHCR |
+| `event-handler.yml` | Manual or push to `main` | Runs event handler continuously via Tailscale Funnel (auto-restarts every ~6h) |
 | `run-job.yml` | `job/*` branch created | Runs Docker agent container |
 | `auto-merge.yml` | PR opened from `job/*` branch | Checks `AUTO_MERGE` + `ALLOWED_PATHS`, merges if allowed |
 | `update-event-handler.yml` | After `auto-merge.yml` completes | Gathers job data and sends to event handler for Telegram notification |

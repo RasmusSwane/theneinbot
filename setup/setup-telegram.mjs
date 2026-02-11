@@ -50,7 +50,7 @@ function loadEnvFile() {
 
 async function main() {
   console.log(chalk.bold.cyan('\n  Telegram Webhook Setup\n'));
-  console.log(chalk.dim('  Use this to reconfigure Telegram after restarting ngrok.\n'));
+  console.log(chalk.dim('  Use this to reconfigure Telegram after URL changes.\n'));
 
   // Check prerequisites
   const prereqs = await checkPrerequisites();
@@ -66,29 +66,28 @@ async function main() {
   // Load existing config
   const env = loadEnvFile();
 
-  // Get ngrok URL first (verify server is up)
+  // Get URL first (verify server is up)
   console.log(chalk.yellow('\n  Make sure both terminals are running:\n'));
   console.log(chalk.dim('  Terminal 1: ') + chalk.cyan('cd event_handler && npm start'));
-  console.log(chalk.dim('  Terminal 2: ') + chalk.cyan('ngrok http 3000\n'));
+  console.log(chalk.dim('  Terminal 2: ') + chalk.cyan('tailscale serve https / http://localhost:3000\n'));
 
-  let ngrokUrl = null;
-  while (!ngrokUrl) {
+  let serverUrl = null;
+  while (!serverUrl) {
     const { url } = await inquirer.prompt([
       {
         type: 'input',
         name: 'url',
-        message: 'Paste your ngrok URL (https://...ngrok...):',
+        message: 'Paste your server URL (https://...):',
         validate: (input) => {
           if (!input) return 'URL is required';
           if (!input.startsWith('https://')) return 'URL must start with https://';
-          if (!input.includes('ngrok')) return 'URL should be an ngrok URL';
           return true;
         },
       },
     ]);
     const testUrl = url.replace(/\/$/, '');
 
-    // Verify the server is reachable through ngrok
+    // Verify the server is reachable
     const healthSpinner = ora('Verifying server is reachable...').start();
     const apiKey = env?.API_KEY;
     try {
@@ -101,12 +100,12 @@ async function main() {
         const data = await response.json();
         if (data.message === 'Pong!') {
           healthSpinner.succeed('Server is reachable and authenticated');
-          ngrokUrl = testUrl;
+          serverUrl = testUrl;
         } else {
           healthSpinner.fail('Unexpected response from server');
           const retry = await confirm('Try again?');
           if (!retry) {
-            ngrokUrl = testUrl;
+            serverUrl = testUrl;
           }
         }
       } else if (response.status === 401) {
@@ -114,29 +113,29 @@ async function main() {
         printWarning('Check that API_KEY in .env matches the running server');
         const retry = await confirm('Try again?');
         if (!retry) {
-          ngrokUrl = testUrl;
+          serverUrl = testUrl;
         }
       } else {
         healthSpinner.fail(`Server returned status ${response.status}`);
         printWarning('Make sure the event handler server is running');
         const retry = await confirm('Try again?');
         if (!retry) {
-          ngrokUrl = testUrl;
+          serverUrl = testUrl;
         }
       }
     } catch (error) {
       healthSpinner.fail(`Could not reach server: ${error.message}`);
-      printWarning('Make sure both the server AND ngrok are running');
+      printWarning('Make sure both the server AND Tailscale Serve are running');
       const retry = await confirm('Try again?');
       if (!retry) {
-        ngrokUrl = testUrl;
+        serverUrl = testUrl;
       }
     }
   }
 
   // Set GH_WEBHOOK_URL variable
   const urlSpinner = ora('Updating GH_WEBHOOK_URL variable...').start();
-  const urlResult = await setVariables(owner, repo, { GH_WEBHOOK_URL: ngrokUrl });
+  const urlResult = await setVariables(owner, repo, { GH_WEBHOOK_URL: serverUrl });
   if (urlResult.GH_WEBHOOK_URL.success) {
     urlSpinner.succeed('GH_WEBHOOK_URL variable updated');
   } else {
@@ -195,7 +194,7 @@ async function main() {
   }
 
   // Register Telegram webhook
-  const webhookUrl = `${ngrokUrl}/telegram/webhook`;
+  const webhookUrl = `${serverUrl}/telegram/webhook`;
   const tgSpinner = ora('Registering Telegram webhook...').start();
   const tgResult = await setTelegramWebhook(token, webhookUrl, webhookSecret);
   if (tgResult.ok) {

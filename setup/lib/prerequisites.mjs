@@ -77,7 +77,7 @@ export async function checkPrerequisites() {
     node: { installed: false, version: null, ok: false },
     packageManager: { installed: false, name: null },
     gh: { installed: false, authenticated: false },
-    ngrok: { installed: false },
+    tailscale: { installed: false },
     git: { installed: false, remoteInfo: null },
   };
 
@@ -103,8 +103,8 @@ export async function checkPrerequisites() {
     results.gh.authenticated = await isGhAuthenticated();
   }
 
-  // Check ngrok
-  results.ngrok.installed = commandExists('ngrok');
+  // Check Tailscale
+  results.tailscale.installed = commandExists('tailscale');
 
   // Check git
   results.git.installed = commandExists('git');
