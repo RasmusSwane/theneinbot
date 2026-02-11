@@ -48,11 +48,14 @@ GH_USER_EMAIL=$(echo "$GH_USER_JSON" | jq -r '.email // "\(.id)+\(.login)@users.
 git config --global user.name "$GH_USER_NAME"
 git config --global user.email "$GH_USER_EMAIL"
 
-# Clone branch - inject token directly into URL to bypass gh credential helper
+# Clone branch - disable gh credential helper and use token directly
 if [ -n "$REPO_URL" ]; then
     echo "Cloning: $REPO_URL branch: $BRANCH"
+    # Remove any gh credential helper that intercepts git auth
+    git config --global --unset-all credential.helper || true
+    git config --system --unset-all credential.helper 2>/dev/null || true
     AUTH_REPO_URL=$(echo "$REPO_URL" | sed "s|https://github.com/|https://x-access-token:${GH_TOKEN}@github.com/|")
-    git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_REPO_URL" /job
+    GIT_TERMINAL_PROMPT=0 git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_REPO_URL" /job
 else
     echo "No REPO_URL provided"
 fi
