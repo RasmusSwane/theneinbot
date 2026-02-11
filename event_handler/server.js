@@ -218,25 +218,52 @@ async function summarizeJob(results) {
       results.log ? `## Agent Log\n${results.log}` : '',
     ].filter(Boolean).join('\n\n');
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: process.env.EVENT_HANDLER_MODEL || 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      }),
-    });
+    // Route based on available API keys (NVIDIA first, then Anthropic)
+    let response;
+    if (process.env.NVIDIA_API_KEY) {
+      // NVIDIA NIM API (OpenAI-compatible format)
+      response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: process.env.EVENT_HANDLER_MODEL || 'moonshotai/kimi-k2.5',
+          max_tokens: 1024,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+        }),
+      });
 
-    if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
+      if (!response.ok) throw new Error(`NVIDIA API error: ${response.status}`);
 
-    const result = await response.json();
-    return (result.content?.[0]?.text || '').trim() || 'Job completed.';
+      const result = await response.json();
+      return (result.choices?.[0]?.message?.content || '').trim() || 'Job completed.';
+    } else {
+      // Anthropic API (fallback)
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: process.env.EVENT_HANDLER_MODEL || 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      });
+
+      if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
+
+      const result = await response.json();
+      return (result.content?.[0]?.text || '').trim() || 'Job completed.';
+    }
   } catch (err) {
     console.error('Failed to summarize job:', err);
     return 'Job completed.';

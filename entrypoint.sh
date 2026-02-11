@@ -75,7 +75,13 @@ $(cat /job/logs/${JOB_ID}/job.md)"
 
 MODEL_FLAGS=""
 if [ -n "$MODEL" ]; then
-    if [ -n "$OPENROUTER_API_KEY" ]; then
+    if [ -n "$NVIDIA_API_KEY" ]; then
+        # NVIDIA NIM is OpenAI-compatible, use openrouter provider with NVIDIA credentials
+        # Note: This assumes pi CLI supports custom base URLs via OPENROUTER_BASE_URL
+        export OPENROUTER_API_KEY="$NVIDIA_API_KEY"
+        export OPENROUTER_BASE_URL="https://integrate.api.nvidia.com/v1"
+        MODEL_FLAGS="--provider openrouter --model $MODEL"
+    elif [ -n "$OPENROUTER_API_KEY" ]; then
         MODEL_FLAGS="--provider openrouter --model $MODEL"
     else
         MODEL_FLAGS="--provider anthropic --model $MODEL"

@@ -1,7 +1,7 @@
 const path = require('path');
 const { render_md } = require('../utils/render-md');
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'moonshotai/kimi-k2.5';
 
 // Web search tool definition (Anthropic built-in)
 const WEB_SEARCH_TOOL = {
