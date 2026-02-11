@@ -1,4 +1,4 @@
-name: Event Handler (Tailscale)
+name: Event Handler
 
 on:
   workflow_dispatch:
@@ -30,32 +30,32 @@ jobs:
         working-directory: event_handler
         run: npm ci
 
-      - name: Setup Tailscale
-        uses: tailscale/github-action@v3
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      - name: Start Tailscale Funnel
+      - name: Start Cloudflare Tunnel
         run: |
-          # Start Tailscale Funnel (serves HTTP on port 3000 publicly via HTTPS)
-          sudo tailscale funnel --bg 3000
+          # Install cloudflared
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+          sudo dpkg -i cloudflared.deb
           
-          # Wait for Funnel to propagate
-          sleep 10
+          # Start tunnel in background, log to file
+          cloudflared tunnel --url http://localhost:3000 --no-autoupdate > /tmp/cloudflared.log 2>&1 &
           
-          # Get hostname from tailscale status JSON
-          TS_HOSTNAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
-          FUNNEL_URL="https://${TS_HOSTNAME}"
+          # Wait for tunnel URL to appear
+          echo "Waiting for Cloudflare Tunnel URL..."
+          for i in $(seq 1 30); do
+            FUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -1)
+            if [ -n "$FUNNEL_URL" ]; then
+              break
+            fi
+            sleep 2
+          done
           
-          if [ -z "$TS_HOSTNAME" ] || [ "$TS_HOSTNAME" = "null" ]; then
-            echo "Failed to get Tailscale hostname"
-            tailscale status
+          if [ -z "$FUNNEL_URL" ]; then
+            echo "Failed to get Cloudflare Tunnel URL"
+            cat /tmp/cloudflared.log
             exit 1
           fi
           
-          echo "Funnel URL: $FUNNEL_URL"
+          echo "Tunnel URL: $FUNNEL_URL"
           echo "FUNNEL_URL=$FUNNEL_URL" >> $GITHUB_ENV
 
       - name: Update GH_WEBHOOK_URL variable
