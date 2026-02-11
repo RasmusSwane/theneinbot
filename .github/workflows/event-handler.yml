@@ -71,9 +71,39 @@ jobs:
       - name: Run event handler
         working-directory: event_handler
         run: |
-          # Start server and run for 5h 45m (20700s)
-          # Using timeout to ensure we stop before the 6h GitHub Actions limit
-          timeout 20700 node server.js || true
+          # Start server in background
+          node server.js &
+          SERVER_PID=$!
+          
+          # Ensure cleanup on exit
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          
+          # Wait for server to be ready
+          sleep 5
+          
+          # Register Telegram webhook (if bot token is configured)
+          if grep -q "^TELEGRAM_BOT_TOKEN=[^[:space:]]" .env 2>/dev/null; then
+            BOT_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" .env | cut -d= -f2-)
+            TG_WEBHOOK_SECRET=$(grep "^TELEGRAM_WEBHOOK_SECRET=" .env | cut -d= -f2-)
+            WEBHOOK_URL="${FUNNEL_URL}/telegram/webhook"
+            
+            echo "Registering Telegram webhook: $WEBHOOK_URL"
+            
+            # Delete existing webhook first (Telegram ignores secret_token changes if URL unchanged)
+            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook" > /dev/null
+            
+            # Set new webhook with secret
+            RESULT=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+              -H "Content-Type: application/json" \
+              -d "{\"url\": \"${WEBHOOK_URL}\", \"secret_token\": \"${TG_WEBHOOK_SECRET}\"}")
+            
+            echo "Telegram webhook registration: $RESULT"
+          else
+            echo "No TELEGRAM_BOT_TOKEN configured, skipping webhook registration"
+          fi
+          
+          # Wait for timeout (5h 45m) then stop
+          sleep 20700 || true
 
       - name: Re-trigger workflow
         if: always()
