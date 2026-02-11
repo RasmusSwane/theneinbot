@@ -228,8 +228,8 @@ export async function promptForDeployMethod() {
       name: 'method',
       message: 'How would you like to deploy the event handler?',
       choices: [
-        { name: 'Deploy to Vercel via CLI (recommended)', value: 'vercel' },
-        { name: 'Open Vercel Deploy Button in browser', value: 'button' },
+        { name: 'Use GitHub Actions + Tailscale (recommended)', value: 'github-actions' },
+        { name: 'Deploy to Vercel via CLI', value: 'vercel' },
         { name: 'Skip - I\'ll deploy manually later', value: 'skip' },
       ],
     },

@@ -1,0 +1,83 @@
+name: Event Handler (Tailscale)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'event_handler/**'
+      - '.github/workflows/event-handler.yml'
+
+concurrency:
+  group: event-handler
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: event_handler
+        run: npm ci
+
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Start Tailscale Funnel
+        run: |
+          # Start Tailscale Funnel for port 3000
+          sudo tailscale funnel --bg 3000
+          
+          # Wait for Funnel to start
+          sleep 5
+          
+          # Get the Funnel URL
+          FUNNEL_URL=$(tailscale funnel status 2>&1 | grep -oP 'https://[^\s]+' | head -1)
+          
+          if [ -z "$FUNNEL_URL" ]; then
+            echo "Failed to get Funnel URL"
+            tailscale funnel status
+            exit 1
+          fi
+          
+          echo "Funnel URL: $FUNNEL_URL"
+          echo "FUNNEL_URL=$FUNNEL_URL" >> $GITHUB_ENV
+
+      - name: Update GH_WEBHOOK_URL variable
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh variable set GH_WEBHOOK_URL --body "$FUNNEL_URL" --repo ${{ github.repository }}
+
+      - name: Write .env file
+        working-directory: event_handler
+        run: |
+          echo '${{ secrets.EVENT_HANDLER_ENV }}' | base64 -d > .env
+
+      - name: Run event handler
+        working-directory: event_handler
+        run: |
+          # Start server and run for 5h 45m (20700s)
+          # Using timeout to ensure we stop before the 6h GitHub Actions limit
+          timeout 20700 node server.js || true
+
+      - name: Re-trigger workflow
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh workflow run event-handler.yml --repo ${{ github.repository }}

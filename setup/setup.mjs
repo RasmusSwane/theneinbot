@@ -175,12 +175,12 @@ async function main() {
     }
   }
 
-  // ngrok check (informational only)
-  if (prereqs.ngrok.installed) {
-    printSuccess('ngrok installed');
+  // Tailscale check (informational only)
+  if (prereqs.tailscale.installed) {
+    printSuccess('Tailscale installed');
   } else {
-    printWarning('ngrok not installed (needed to expose local server)');
-    printInfo('Install with: brew install ngrok/ngrok/ngrok');
+    printWarning('Tailscale not installed (needed to expose local server)');
+    printInfo('Install from: https://tailscale.com/download');
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -387,39 +387,38 @@ async function main() {
   printSuccess(`Created ${envPath}`);
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Step 6: Start Server & ngrok
+  // Step 6: Start Server & Tailscale
   // ─────────────────────────────────────────────────────────────────────────────
-  printStep(++currentStep, TOTAL_STEPS, 'Start Server & ngrok');
+  printStep(++currentStep, TOTAL_STEPS, 'Start Server & Tailscale');
 
-  console.log(chalk.bold('  Now we need to start the server and expose it via ngrok.\n'));
+  console.log(chalk.bold('  Now we need to start the server and expose it via Tailscale.\n'));
   console.log(chalk.yellow('  Open TWO new terminal windows and run:\n'));
   console.log(chalk.bold('  Terminal 1:'));
   console.log(chalk.cyan('     cd event_handler && npm install && npm run dev\n'));
   console.log(chalk.bold('  Terminal 2:'));
-  console.log(chalk.cyan('     ngrok http 3000\n'));
+  console.log(chalk.cyan('     tailscale serve https / http://localhost:3000\n'));
 
-  console.log(chalk.dim('  ngrok will show a "Forwarding" URL like: https://abc123.ngrok.io\n'));
-  console.log(chalk.yellow('  Note: ') + chalk.dim('ngrok URLs change each time you restart it (unless you have a paid plan).'));
-  console.log(chalk.dim('  When your URL changes, run: ') + chalk.cyan('npm run setup-telegram') + chalk.dim(' to reconfigure.\n'));
+  console.log(chalk.dim('  Tailscale will show a stable HTTPS URL like: https://your-machine.tailnet.ts.net\n'));
+  console.log(chalk.yellow('  Note: ') + chalk.dim('Tailscale URLs are stable and don\'t change on restart.'));
+  console.log(chalk.dim('  Get your URL with: ') + chalk.cyan('tailscale status | grep "MagicDNS"\n'));
 
-  let ngrokUrl = null;
-  while (!ngrokUrl) {
+  let tailscaleUrl = null;
+  while (!tailscaleUrl) {
     const { url } = await inquirer.prompt([
       {
         type: 'input',
         name: 'url',
-        message: 'Paste your ngrok URL (https://...ngrok...):',
+        message: 'Paste your Tailscale URL (https://...ts.net) or other HTTPS URL:',
         validate: (input) => {
           if (!input) return 'URL is required';
           if (!input.startsWith('https://')) return 'URL must start with https://';
-          if (!input.includes('ngrok')) return 'URL should be an ngrok URL';
           return true;
         },
       },
     ]);
     const testUrl = url.replace(/\/$/, '');
 
-    // Verify the server is reachable through ngrok
+    // Verify the server is reachable through Tailscale
     const healthSpinner = ora('Verifying server is reachable...').start();
     try {
       const response = await fetch(`${testUrl}/ping`, {
@@ -431,12 +430,12 @@ async function main() {
         const data = await response.json();
         if (data.message === 'Pong!') {
           healthSpinner.succeed('Server is reachable and authenticated');
-          ngrokUrl = testUrl;
+          tailscaleUrl = testUrl;
         } else {
           healthSpinner.fail('Unexpected response from server');
           const retry = await confirm('Try again?');
           if (!retry) {
-            ngrokUrl = testUrl;
+            tailscaleUrl = testUrl;
           }
         }
       } else if (response.status === 401) {
@@ -451,31 +450,31 @@ async function main() {
         console.log(chalk.cyan('    3. Run: npm start\n'));
         const retry = await confirm('Retry after restarting the server?');
         if (!retry) {
-          ngrokUrl = testUrl;
+          tailscaleUrl = testUrl;
         }
       } else {
         healthSpinner.fail(`Server returned status ${response.status}`);
         printWarning('Make sure the event handler server is running (cd event_handler && npm start)');
         const retry = await confirm('Try again?');
         if (!retry) {
-          ngrokUrl = testUrl;
+          tailscaleUrl = testUrl;
         }
       }
     } catch (error) {
       healthSpinner.fail(`Could not reach server: ${error.message}`);
-      printWarning('Make sure both the server AND ngrok are running');
+      printWarning('Make sure both the server AND Tailscale Serve are running');
       printInfo('Terminal 1: cd event_handler && npm install && npm start');
-      printInfo('Terminal 2: ngrok http 3000');
+      printInfo('Terminal 2: tailscale serve https / http://localhost:3000');
       const retry = await confirm('Try again?');
       if (!retry) {
-        ngrokUrl = testUrl; // Continue anyway
+        tailscaleUrl = testUrl; // Continue anyway
       }
     }
   }
 
   // Set GH_WEBHOOK_URL variable
   const urlSpinner = ora('Setting GH_WEBHOOK_URL variable...').start();
-  const urlResult = await setVariables(owner, repo, { GH_WEBHOOK_URL: ngrokUrl });
+  const urlResult = await setVariables(owner, repo, { GH_WEBHOOK_URL: tailscaleUrl });
   if (urlResult.GH_WEBHOOK_URL.success) {
     urlSpinner.succeed('GH_WEBHOOK_URL variable set');
   } else {
@@ -484,7 +483,7 @@ async function main() {
 
   // Register Telegram webhook if configured
   if (telegramToken) {
-    const webhookUrl = `${ngrokUrl}/telegram/webhook`;
+    const webhookUrl = `${tailscaleUrl}/telegram/webhook`;
     const tgSpinner = ora('Registering Telegram webhook...').start();
     const tgResult = await setTelegramWebhook(telegramToken, webhookUrl, telegramWebhookSecret);
     if (tgResult.ok) {
@@ -500,7 +499,7 @@ async function main() {
       updateEnvVariable('TELEGRAM_CHAT_ID', chatId);
       printSuccess(`Chat ID saved: ${chatId}`);
 
-      const verified = await verifyRestart(ngrokUrl, apiKey);
+      const verified = await verifyRestart(tailscaleUrl, apiKey);
       if (verified) {
         printSuccess('Telegram bot is configured and working!');
       } else {

@@ -30,17 +30,17 @@ export async function runVerificationFlow(verificationCode) {
 
 /**
  * Wait for server to pick up .env changes and verify it's running
- * @param {string} ngrokUrl - The ngrok URL
+ * @param {string} serverUrl - The server URL
  * @param {string} apiKey - The API key for authentication
  * @returns {Promise<boolean>} - True if verified successfully
  */
-export async function verifyRestart(ngrokUrl, apiKey) {
+export async function verifyRestart(serverUrl, apiKey) {
   console.log(chalk.dim('\n  Waiting for server to pick up changes...\n'));
   await new Promise(resolve => setTimeout(resolve, 3000));
 
   // Verify server is up
   try {
-    const response = await fetch(`${ngrokUrl}/ping`, {
+    const response = await fetch(`${serverUrl}/ping`, {
       method: 'GET',
       headers: { 'x-api-key': apiKey },
       signal: AbortSignal.timeout(10000)

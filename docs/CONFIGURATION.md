@@ -41,7 +41,7 @@ Configure in **Settings → Secrets and variables → Actions → Variables**:
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `GH_WEBHOOK_URL` | Event handler URL (e.g., your ngrok URL) | Yes | — |
+| `GH_WEBHOOK_URL` | Event handler URL (e.g., your Tailscale Funnel URL) | Yes | — |
 | `AUTO_MERGE` | Set to `false` to disable auto-merge of job PRs | No | Enabled |
 | `ALLOWED_PATHS` | Comma-separated path prefixes for auto-merge | No | `/logs` |
 | `IMAGE_URL` | Docker image path (e.g., `ghcr.io/myorg/mybot`) | No | `stephengpope/thepopebot:latest` |
@@ -49,10 +49,51 @@ Configure in **Settings → Secrets and variables → Actions → Variables**:
 
 ---
 
-## ngrok URL Changes
+## Tailscale Setup
 
-ngrok assigns a new URL each time you restart it (unless you have a paid plan with a static domain). When your ngrok URL changes, run:
+When using the GitHub Actions event handler workflow, Tailscale Funnel provides a stable HTTPS URL for webhooks:
 
+1. **Create a Tailscale account** at https://tailscale.com
+2. **Enable Funnel** in your tailnet settings at https://login.tailscale.com/admin/settings/general
+3. **Create an OAuth client** at https://login.tailscale.com/admin/settings/oauth
+   - Add the `devices:write` scope
+   - Note the Client ID and Client Secret
+4. **Set GitHub secrets**:
+   - `TS_OAUTH_CLIENT_ID` - Your OAuth client ID
+   - `TS_OAUTH_SECRET` - Your OAuth client secret
+   - `GH_PAT` - GitHub PAT with `repo` and `workflow` scopes
+   - `EVENT_HANDLER_ENV` - Base64-encoded .env file contents (see `event_handler/.env.example`)
+
+The event handler workflow automatically updates `GH_WEBHOOK_URL` and runs continuously (auto-restarts every ~6 hours due to GitHub Actions job time limits).
+
+---
+
+## Manual Telegram Setup (Local Development)
+
+If you're running the event handler locally for development, you can use Tailscale Serve or ngrok:
+
+**With Tailscale Serve:**
+```bash
+# Terminal 1: Start the event handler
+cd event_handler && npm start
+
+# Terminal 2: Expose via Tailscale Serve
+tailscale serve https / http://localhost:3000
+
+# Get your Tailscale URL
+tailscale status | grep "MagicDNS"
+```
+
+**With ngrok (for quick testing):**
+```bash
+# Terminal 1: Start the event handler
+cd event_handler && npm start
+
+# Terminal 2: Expose via ngrok
+ngrok http 3000
+```
+
+Then run the Telegram setup script:
 ```bash
 npm run setup-telegram
 ```
@@ -63,7 +104,7 @@ This will verify your server is running, update the GitHub webhook URL, re-regis
 
 ## Manual Telegram Setup (Production)
 
-If you're deploying to a platform where you can't run the setup script (Vercel, Railway, etc.), configure Telegram manually:
+If you're deploying to a platform where you can't run the setup script (Vercel, Cloudflare Workers, etc.), configure Telegram manually:
 
 1. **Set environment variables** in your platform's dashboard (see `event_handler/.env.example` for reference):
    - `TELEGRAM_BOT_TOKEN` - Your bot token from @BotFather
@@ -72,10 +113,10 @@ If you're deploying to a platform where you can't run the setup script (Vercel, 
 
 2. **Deploy and register the webhook:**
    ```bash
-   curl -X POST https://your-app.vercel.app/telegram/register \
+   curl -X POST https://your-app.example.com/telegram/register \
      -H "Content-Type: application/json" \
      -H "x-api-key: YOUR_API_KEY" \
-     -d '{"bot_token": "YOUR_BOT_TOKEN", "webhook_url": "https://your-app.vercel.app/telegram/webhook"}'
+     -d '{"bot_token": "YOUR_BOT_TOKEN", "webhook_url": "https://your-app.example.com/telegram/webhook"}'
    ```
    This registers your webhook with the secret from your env.
 
