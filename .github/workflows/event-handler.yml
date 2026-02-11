@@ -39,16 +39,13 @@ jobs:
 
       - name: Start Tailscale Funnel
         run: |
-          # Set up HTTPS reverse proxy to local HTTP server
-          sudo tailscale serve https / http://localhost:3000
-          
-          # Expose publicly via Funnel
-          sudo tailscale funnel 443 on
+          # Start Tailscale Funnel (serves HTTP on port 3000 publicly via HTTPS)
+          sudo tailscale funnel --bg 3000
           
           # Wait for Funnel to propagate
           sleep 10
           
-          # Get hostname from tailscale status
+          # Get hostname from tailscale status JSON
           TS_HOSTNAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
           FUNNEL_URL="https://${TS_HOSTNAME}"
           
@@ -60,10 +57,6 @@ jobs:
           
           echo "Funnel URL: $FUNNEL_URL"
           echo "FUNNEL_URL=$FUNNEL_URL" >> $GITHUB_ENV
-          
-          # Verify Funnel is working
-          sleep 5
-          curl -s -o /dev/null -w "%{http_code}" "$FUNNEL_URL/ping" || echo "Warning: Could not verify Funnel (server not started yet)"
 
       - name: Update GH_WEBHOOK_URL variable
         env:
