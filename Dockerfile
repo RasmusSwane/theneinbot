@@ -31,6 +31,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Prevent gh CLI from ever registering as a git credential helper
+RUN git config --system --unset-all credential.helper 2>/dev/null || true \
+    && echo "[credential]\n\thelper = " > /etc/gitconfig
+
 RUN npm install -g @mariozechner/pi-coding-agent
 
 # Create Pi config directory (extension loaded from repo at runtime)
