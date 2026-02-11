@@ -31,6 +31,7 @@ if [ -n "$LLM_SECRETS" ]; then
 fi
 
 # Git setup - derive identity from GitHub token
+echo "$GH_TOKEN" | gh auth login --with-token
 gh auth setup-git
 GH_USER_JSON=$(gh api user -q '{name: .name, login: .login, email: .email, id: .id}')
 GH_USER_NAME=$(echo "$GH_USER_JSON" | jq -r '.name // .login')
