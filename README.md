@@ -63,7 +63,7 @@ You talk to your bot on Telegram (or hit a webhook). The Event Handler creates a
 | **Private repos** | 2,000 free minutes/month (every GitHub plan, including free) | $20-100+/month |
 | **Infrastructure** | GitHub Actions (already included) | Dedicated servers |
 
-You just bring your own [Anthropic API key](https://console.anthropic.com/).
+You just bring your own LLM API key ([Anthropic](https://console.anthropic.com/), [OpenRouter](https://openrouter.ai/), or [NVIDIA NIM](https://build.nvidia.com/)).
 
 ---
 
@@ -105,7 +105,7 @@ npm run setup
 The wizard handles everything:
 - Checks prerequisites (Node.js, Git, GitHub CLI, ngrok)
 - Creates a GitHub Personal Access Token
-- Collects API keys (Anthropic required; OpenAI, Groq, and [Brave Search](https://api-dashboard.search.brave.com/app/keys) optional)
+- Collects API keys (At least one LLM backend required: Anthropic, OpenRouter, or NVIDIA NIM; OpenAI, Groq, and [Brave Search](https://api-dashboard.search.brave.com/app/keys) optional)
 - Sets GitHub repository secrets and variables
 - Sets up Telegram bot
 - Starts the server + ngrok, generates `event_handler/.env`

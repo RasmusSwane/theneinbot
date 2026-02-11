@@ -11,6 +11,14 @@ const WEB_SEARCH_TOOL = {
 };
 
 /**
+ * Check if NVIDIA NIM backend is configured
+ * @returns {boolean}
+ */
+function isNvidia() {
+  return !!process.env.NVIDIA_API_KEY;
+}
+
+/**
  * Check if OpenRouter backend is configured
  * @returns {boolean}
  */
@@ -19,17 +27,20 @@ function isOpenRouter() {
 }
 
 /**
- * Get API key from environment (Anthropic or OpenRouter)
+ * Get API key from environment (NVIDIA, OpenRouter, or Anthropic)
  * @returns {string} API key
  */
 function getApiKey() {
+  if (process.env.NVIDIA_API_KEY) {
+    return process.env.NVIDIA_API_KEY;
+  }
   if (process.env.OPENROUTER_API_KEY) {
     return process.env.OPENROUTER_API_KEY;
   }
   if (process.env.ANTHROPIC_API_KEY) {
     return process.env.ANTHROPIC_API_KEY;
   }
-  throw new Error('ANTHROPIC_API_KEY or OPENROUTER_API_KEY environment variable is required');
+  throw new Error('NVIDIA_API_KEY, OPENROUTER_API_KEY, or ANTHROPIC_API_KEY environment variable is required');
 }
 
 /**
@@ -145,6 +156,46 @@ function convertResponseToAnthropic(openaiResponse) {
 }
 
 /**
+ * Call LLM via NVIDIA NIM (OpenAI-compatible API)
+ */
+async function callNvidia(messages, tools) {
+  const apiKey = process.env.NVIDIA_API_KEY;
+  const model = process.env.EVENT_HANDLER_MODEL || DEFAULT_MODEL;
+  const systemPrompt = render_md(path.join(__dirname, '..', '..', 'operating_system', 'CHATBOT.md'));
+
+  // Convert to OpenAI format (exclude Anthropic-specific web_search tool)
+  const openaiMessages = convertMessagesToOpenAI(systemPrompt, messages);
+  const openaiTools = convertToolsToOpenAI(tools);
+
+  const body = {
+    model,
+    max_tokens: 4096,
+    messages: openaiMessages,
+  };
+
+  if (openaiTools.length > 0) {
+    body.tools = openaiTools;
+  }
+
+  const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`NVIDIA NIM API error: ${response.status} ${error}`);
+  }
+
+  const openaiResponse = await response.json();
+  return convertResponseToAnthropic(openaiResponse);
+}
+
+/**
  * Call LLM via OpenRouter (OpenAI-compatible API)
  */
 async function callOpenRouter(messages, tools) {
@@ -222,12 +273,15 @@ async function callAnthropicDirect(messages, tools) {
 }
 
 /**
- * Call Claude API (routes to OpenRouter or Anthropic based on config)
+ * Call Claude API (routes to NVIDIA, OpenRouter, or Anthropic based on config)
  * @param {Array} messages - Conversation messages
  * @param {Array} tools - Tool definitions
  * @returns {Promise<Object>} API response in Anthropic format
  */
 async function callClaude(messages, tools) {
+  if (isNvidia()) {
+    return callNvidia(messages, tools);
+  }
   if (isOpenRouter()) {
     return callOpenRouter(messages, tools);
   }

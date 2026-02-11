@@ -15,9 +15,11 @@ All environment variables for the Event Handler (set in `event_handler/.env`):
 | `TELEGRAM_CHAT_ID` | Restricts bot to this chat only | For security |
 | `TELEGRAM_WEBHOOK_SECRET` | Secret for webhook validation | No |
 | `GH_WEBHOOK_SECRET` | Secret for GitHub Actions webhook auth | For notifications |
-| `ANTHROPIC_API_KEY` | Claude API key for chat functionality | For chat |
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude chat functionality | For chat (one of three) |
+| `OPENROUTER_API_KEY` | OpenRouter API key for alternative LLM routing | For chat (one of three) |
+| `NVIDIA_API_KEY` | NVIDIA NIM API key (get at https://build.nvidia.com) | For chat (one of three) |
 | `OPENAI_API_KEY` | OpenAI key for voice transcription | For voice |
-| `EVENT_HANDLER_MODEL` | Claude model for chat (default: claude-sonnet-4) | No |
+| `EVENT_HANDLER_MODEL` | Model for chat (default: claude-sonnet-4). Use Anthropic models, OpenRouter model IDs, or NVIDIA model IDs like `moonshotai/kimi-k2.5` | No |
 
 ---
 
