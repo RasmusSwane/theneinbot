@@ -41,27 +41,42 @@ if [ -n "$LLM_SECRETS" ]; then
 fi
 
 # Git setup - use GH_TOKEN directly for authentication
-git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-GH_USER_JSON=$(gh api user -q '{name: .name, login: .login, email: .email, id: .id}')
-GH_USER_NAME=$(echo "$GH_USER_JSON" | jq -r '.name // .login')
-GH_USER_EMAIL=$(echo "$GH_USER_JSON" | jq -r '.email // "\(.id)+\(.login)@users.noreply.github.com"')
+# Export GITHUB_TOKEN as well (some gh CLI versions check this instead of GH_TOKEN)
+export GITHUB_TOKEN="$GH_TOKEN"
+
+# Get user info using curl + GH_TOKEN directly (avoids gh CLI credential helper side effects)
+# NOTE: Do NOT use 'gh api' here — it auto-registers gh as a git credential helper,
+# which intercepts git clone and causes "401 No cookie auth credentials found"
+GH_USER_JSON=$(curl -sf -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user 2>/dev/null | jq '{name: .name, login: .login, email: .email, id: .id}' 2>/dev/null || echo '{}')
+GH_USER_NAME=$(echo "$GH_USER_JSON" | jq -r '.name // .login // empty')
+GH_USER_EMAIL=$(echo "$GH_USER_JSON" | jq -r '.email // empty')
+
+# Fallback if API call failed or returned empty (e.g. token scope issue)
+if [ -z "$GH_USER_NAME" ]; then
+    GH_USER_NAME="thepopebot"
+fi
+if [ -z "$GH_USER_EMAIL" ]; then
+    GH_USER_EMAIL="thepopebot@users.noreply.github.com"
+fi
+
 git config --global user.name "$GH_USER_NAME"
 git config --global user.email "$GH_USER_EMAIL"
 
-# Clone branch - disable gh credential helper and use token directly
+# Clone branch - inject token directly into URL, disable all credential helpers
 if [ -n "$REPO_URL" ]; then
     echo "Cloning: $REPO_URL branch: $BRANCH"
-    # Remove any gh credential helper that intercepts git auth
-    git config --global --unset-all credential.helper || true
+
+    # Nuke all credential helpers (global, system, and any gh-registered ones)
+    git config --global --unset-all credential.helper 2>/dev/null || true
     git config --system --unset-all credential.helper 2>/dev/null || true
-    
-    # Defensive measures: prevent any credential helper interference
-    # gh CLI auto-registers itself after 'gh api user', so we must re-disable it here
-    export GIT_TERMINAL_PROMPT=0
-    export GIT_ASKPASS=/bin/true
-    export GIT_CONFIG_NOSYSTEM=1
     git config --global credential.helper ""
-    
+
+    # Prevent any credential prompt or helper from intercepting auth
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_CONFIG_NOSYSTEM=1
+    unset GIT_ASKPASS
+
+    # Rewrite URL to embed token directly — bypasses all credential mechanisms
     AUTH_REPO_URL=$(echo "$REPO_URL" | sed "s|https://github.com/|https://x-access-token:${GH_TOKEN}@github.com/|")
     git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_REPO_URL" /job
 else
@@ -126,6 +141,7 @@ git push origin
 #fi
 
 # 5. Create PR (auto-merge handled by GitHub Actions workflow)
+# gh CLI uses GH_TOKEN/GITHUB_TOKEN env vars automatically for API calls
 gh pr create --title "thepopebot: job ${JOB_ID}" --body "Automated job" --base main || true
 
 # Cleanup
