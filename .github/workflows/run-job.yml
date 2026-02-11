@@ -20,6 +20,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Run thepopebot Agent
         env:
           IMAGE_URL: ${{ vars.IMAGE_URL }}
@@ -31,7 +34,9 @@ jobs:
             IMAGE="stephengpope/thepopebot:latest"
           fi
           echo "Using image: $IMAGE"
+          chmod +x entrypoint.sh
           docker run --rm \
+            -v "${{ github.workspace }}/entrypoint.sh:/entrypoint.sh" \
             -e REPO_URL="${{ github.server_url }}/${{ github.repository }}.git" \
             -e BRANCH="${{ github.ref_name }}" \
             -e SECRETS='${{ secrets.SECRETS }}' \
