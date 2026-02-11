@@ -21,6 +21,16 @@ if [ -n "$SECRETS" ]; then
     SECRETS_JSON=$(echo "$SECRETS" | base64 -d)
     eval $(echo "$SECRETS_JSON" | jq -r 'to_entries | .[] | "export \(.key)=\"\(.value)\""')
     export SECRETS="$SECRETS_JSON"  # Keep decoded for extension to parse
+else
+    echo "WARNING: SECRETS env var is empty!"
+fi
+
+# Debug: check if GH_TOKEN is set
+if [ -z "$GH_TOKEN" ]; then
+    echo "ERROR: GH_TOKEN is empty after decoding SECRETS"
+    exit 1
+else
+    echo "GH_TOKEN is set (length: ${#GH_TOKEN})"
 fi
 
 # Export LLM_SECRETS (base64 JSON) as flat env vars
@@ -32,7 +42,7 @@ fi
 
 # Git setup - use GH_TOKEN directly for authentication
 git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-GH_USER_JSON=$(GH_TOKEN="$GH_TOKEN" gh api user -q '{name: .name, login: .login, email: .email, id: .id}')
+GH_USER_JSON=$(gh api user -q '{name: .name, login: .login, email: .email, id: .id}')
 GH_USER_NAME=$(echo "$GH_USER_JSON" | jq -r '.name // .login')
 GH_USER_EMAIL=$(echo "$GH_USER_JSON" | jq -r '.email // "\(.id)+\(.login)@users.noreply.github.com"')
 git config --global user.name "$GH_USER_NAME"
@@ -40,6 +50,7 @@ git config --global user.email "$GH_USER_EMAIL"
 
 # Clone branch
 if [ -n "$REPO_URL" ]; then
+    echo "Cloning: $REPO_URL branch: $BRANCH"
     git clone --single-branch --branch "$BRANCH" --depth 1 "$REPO_URL" /job
 else
     echo "No REPO_URL provided"
